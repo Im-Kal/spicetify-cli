@@ -85,9 +85,12 @@ class Grid extends react.Component {
                 react.createElement(
                     "div",
                     {
-                        className: "main-gridContainer-gridContainer",
+                        className: "main-gridContainer-gridContainer main-gridContainer-fixedWidth",
                         style: {
                             "--minimumColumnWidth": "180px",
+                            "--column-width": "minmax(var(--minimumColumnWidth),1fr)",
+                            "--column-count": "auto-fill",
+                            "--grid-gap": "24px",
                         },
                     },
                     separatedByDate[date].map((card) => react.createElement(Card, card.props))
@@ -154,9 +157,12 @@ class Grid extends react.Component {
                 react.createElement(
                     "div",
                     {
-                        className: "main-gridContainer-gridContainer",
+                        className: "main-gridContainer-gridContainer main-gridContainer-fixedWidth",
                         style: {
                             "--minimumColumnWidth": "180px",
+                            "--column-width": "minmax(var(--minimumColumnWidth),1fr)",
+                            "--column-count": "auto-fill",
+                            "--grid-gap": "24px",
                         },
                     },
                     separatedByDate[date]
@@ -224,19 +230,20 @@ async function getArtistList() {
     const body = await CosmosAsync.get("sp://core-collection/unstable/@/list/artists/all?responseFormat=protobufJson", {
         policy: { list: { link: true, name: true } },
     });
+    count(true);
     return body.item;
 }
 
 async function getArtistEverything(artist) {
     const uid = artist.link.replace("spotify:artist:", "");
-    const body = await CosmosAsync.get(`hm://artist/v3/${uid}/desktop/entity?format=json`);
+    const body = await CosmosAsync.get(`wg://artist/v3/${uid}/desktop/entity?format=json`);
     const releases = body?.releases;
     const items = [];
     const types = [
-        [CONFIG.album, releases?.albums?.releases, Spicetify.Locale.get("album")],
-        [CONFIG["appears-on"], releases?.appears_on?.releases, Spicetify.Locale.get("artist.appears-on")],
-        [CONFIG.compilations, releases?.compilations?.releases, Spicetify.Locale.get("compilation")],
-        [CONFIG["single-ep"], releases?.singles?.releases, Spicetify.Locale.get("single") + "/" + Spicetify.Locale.get("ep")],
+        [CONFIG.album, releases.albums?.releases, Spicetify.Locale.get("album")],
+        [CONFIG["appears-on"], releases.appears_on?.releases, Spicetify.Locale.get("artist.appears-on")],
+        [CONFIG.compilations, releases.compilations?.releases, Spicetify.Locale.get("compilation")],
+        [CONFIG["single-ep"], releases.singles?.releases, Spicetify.Locale.get("single") + "/" + Spicetify.Locale.get("ep")],
     ];
     for (const type of types) {
         if (type[0] && type[1]) {
@@ -281,13 +288,25 @@ function metaFromTrack(artist, track) {
     return null;
 }
 
+var count = (function () {
+    var counter = 0;
+    return function (reset = false) {
+        return reset ? (counter = 0) : counter++;
+    };
+})();
+
 async function fetchTracks() {
     let artistList = await getArtistList();
+    Spicetify.showNotification(`Fetching releases from ${artistList.length} artists`);
 
     const requests = artistList.map(async (obj) => {
         const artist = obj.artistMetadata;
-
-        return await getArtistEverything(artist);
+        return await getArtistEverything(artist).catch((err) => {
+            console.debug("Could not fetch all releases - error code: " + err.status);
+            if ((err.status = 500)) {
+                console.debug(`Missing releases from ${count()} artists`);
+            }
+        });
     });
 
     return await Promise.all(requests);
